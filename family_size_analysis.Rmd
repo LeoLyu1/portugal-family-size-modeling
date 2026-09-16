@@ -1,0 +1,453 @@
+---
+title: "The effect of literacy and age of a marriage on family size"
+author: "Zixuan Lu  Leo Lyu"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+Understanding which factors are affecting family size is very important for social economists and policymakers in any country around the world, as this will help them effectively plan for resource allocations and the country's long-term economic development. Research has shown that the relationship between family size and educational attainment is likely associated with a country’s level of development, making this an essential area of study for understanding broader socio-economic patterns (Maralani, 2008). 
+
+Previous studies about factors affecting family size have been conducted. A study conducted in Gulf Arab countries has found that family sizes in the capital are smaller than less urbanized areas, the duration of marriage has a significant positive effect on family size, and education level is inversely related to family size (Hamadeh et al., 2008). Another study conducted in West Bengal, India, has also found that urban areas have lower fertility rates compared to rural areas, age at marriage significantly influences fertility, and women with at least ten years of schooling tend to have fewer children(Chatterjee, 2019). A study conducted in the United States has found that women with bachelor's degrees desiring three or more children are less likely to become mothers compared to those without college education, and marriage after age 30 is linked to lower parenthood rates (Nitsche & Hayford, 2020).
+
+The studies suggest that factors including age of marriage, education, duration of marriage, urban or rural region, are all affecting family size. In our analysis, we will focus on answering the main research question “How do literacy and age of a marriage affect family size?” using data from a fertility survey conducted in Portugal in 1979. We will extend the analysis of prior studies by quantifying the effect of literacy and age of marriage on family size, after controlling for age, region, and the number of years since marriage, which prior research indicates also influence family size. In the analysis, we will use the Poisson Regression model and the Negative Binomial model to estimate the effect of these variables, utilizing an offset for years married to interpret family size as a rate of children per year.  
+
+
+```{r dataDownload, include=FALSE}
+pUrl = 'http://wfs.dhsprogram.com/pt/ptsr01.dat'
+pName = file.path(tempdir(), 'portugal.dat')
+if(!file.exists(pName)) {
+  download.file(pUrl, pName)
+}
+
+datNames = rbind(
+		age=c(45,2),
+		ageMarried=c(149,2), 
+		monthsSinceM = c(157,4),
+#		failedPregnancies=c(421,2),
+#		failedPregStill=c(423,2),
+#		failedPregSpAb=c(425,2),
+		pregnancies=c(433,2),
+		children=c(435,2),
+		sons=c(443,2),
+#		firstBirthInterval = c(479,2),
+		region = c(641,2),
+		literacy = c(649,2)
+)
+		colnames(datNames ) = c('start','len')
+		datNames = cbind(startm1=datNames[,1]-1,datNames, sum=apply(datNames, 1,sum))
+		cbind(datNames[-1,1] , datNames[seq(1, nrow(datNames)-1),4])
+		datNames[-1,1] = datNames[-1,2] - datNames[seq(1, nrow(datNames)-1),4]
+		dWidths = as.vector(t(datNames[,c(1,3)]))
+		dNames = paste(rep(rownames(datNames), rep(2, nrow(datNames))),
+  	rep(c( "junk",""), nrow(datNames)), sep="") 
+		
+		dNames = dNames[dWidths > 0]
+		dWidths = dWidths[dWidths > 0]
+		
+		formats = list(
+			ageMarried = data.frame(code=1:7,  label=c(0,15,18,20,22,25,30)),
+			region = data.frame(code=1:5, 
+				label=c('lisbon','porto','20k+', '10-20k', 'lt10k')),
+			literacy = data.frame(code=1:2, label=c('yes','no')),
+			firstBirthInterval = data.frame(
+					code = 1:8,
+					label = c(
+							'lt0','0-7', '8-11','12-23',
+							'24-35','36-47','48-59','60-Inf'
+							)
+					)
+		)
+
+	
+
+		formats$ageMarried$label = 
+  	paste(formats$ageMarried$label, 'to',
+  	c(formats$ageMarried$label[-1], 'Inf'), sep='')
+  	formats$ageMarried = rbind(formats$ageMarried, data.frame(code=88, label='never'))
+
+   
+  portugal = read.fwf(
+    pName,
+    dWidths, col.names=dNames,
+    header=FALSE)
+  
+  portugal = portugal[,grep("junk$", names(portugal), invert=TRUE)]
+
+for(D in intersect(names(portugal), names(formats))){
+  		portugal[[D]] = factor(portugal[[D]],
+  			levels=formats[[D]]$code, 
+				labels=formats[[D]]$label)
+}
+portugal$ageMarried = relevel(portugal$ageMarried, '22to25')
+portugal$region = relevel(portugal$region, 'lt10k')
+
+if(FALSE) save(portugal, file='portugal.RData')
+```
+
+```{r thedata, include=FALSE}
+head(portugal)
+table(portugal$region)
+```
+
+```{r, include=FALSE}
+var(portugal$children)
+mean(portugal$children)
+```
+
+
+# Methods
+
+In this research problem, the major statistical model used is the Poisson regression model since the response variable (number of children) is for count data. The count data is always a non-negative integer and the model assumes that the response variable follows a Poisson distribution. With the log-link function, the predicted value for the family size will be non-negative. If the variance of the response variable exceeds its mean, it is considered overdispersion and breaks the assumption for the Poisson model. Also, Poisson GLM does not have a variance parameter. In this case, an alternative Negative Binomial model is used for overcoming overdispersion. 
+
+In our models, we use offset for the years since married to make the response a rate that interprets children per year. There are four key predictors in the model which are literacy, age married, age, and region. Literacy and age married are considered as the key variables of interest. We are including predictors age, and region to control for potential confounding effect, and offset for log years since married to remove the effect of marriage duration on family size, since prior literatures suggest that those variables will also affect family size.
+
+To determine the significance of predictors, we use 95% confidence interval to determine whether the predictor is statistically significant. If the estimate for the predictor includes 0 or the exponential of the estimate includes 1, It is considered as not statistically significant. Similar as the Wald Test, if the p-value for the predictor is under 0.05, the predictor is considered significant and influences the response variable. Finally, for the variation of the response, we use the standard deviation computed from the Negative Binomial model to get the percent by which birth rate varies.
+
+
+
+
+# Results
+
+
+
+
+```{r, echo = FALSE}
+library(ggplot2)
+library(gridExtra)
+
+p1 <- ggplot(portugal, aes(x = children)) +
+  geom_histogram(binwidth = 1, fill = "blue", alpha = 0.6) +
+  theme_minimal() +
+  ggtitle("Distribution of number of children")
+
+p2 <- ggplot(portugal, aes(x = literacy)) +
+  geom_bar(fill = "green", alpha = 0.6) +
+  theme_minimal() +
+  ggtitle("Distribution of Literacy")
+
+portugal$ageMarried <- factor(portugal$ageMarried, 
+                              levels = c("0to15", "15to18", "18to20", "20to22", 
+                                         "22to25", "25to30", "30toInf"))
+
+p3 <- ggplot(portugal, aes(x = ageMarried)) +
+  geom_bar(fill = "red", alpha = 0.6) +
+  theme_minimal() +
+  ggtitle("Distribution of Age at Marriage") +
+  theme(axis.text.x = element_text(size = 7))
+
+grid.arrange(p1, p2, p3, ncol = 2, nrow = 2)
+```
+
+
+Figure 1: Distribution of family sizes in Portugal (Top-left), showing a right-skewed distribution with most families having 1 to 3 children. Distribution of literacy (Top-right). Distribution of age married in Portugal (bottom-left), with most married at age 22 to 25. 
+
+```{r, include=FALSE}
+var(portugal$children)
+mean(portugal$children)
+```
+The distribution of the number of children in Portugal is right skewed. The mean of number of children is 2.3 and the variance of number of children is 3.46. The variance of number of children is about 50% larger than its mean. Most women in the data set are literated. The most frequent age married is 22 to 25.
+
+
+\newpage
+
+```{r, echo = FALSE, fig.dim = c(3, 3), layout="[1,1]"}
+library(dplyr)
+
+ggplot(portugal, aes(x = literacy, y = as.numeric(as.character(children)))) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Literacy vs. Family Size",
+       x = "Literacy",
+       y = "Number of Children") +
+  theme_minimal()
+
+portugal$ageMarried <- factor(portugal$ageMarried, 
+                              levels = c("0to15", "15to18", "18to20", "20to22", 
+                                         "22to25", "25to30", "30toInf"))
+
+ggplot(portugal, aes(x = ageMarried, y = as.numeric(as.character(children)))) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Age at Marriage vs. Family Size",
+       x = "Age at Marriage",
+       y = "Number of Children") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+Figure 2: Boxplots showing the relationship between family size and literacy (left) and age at marriage (right). The average number of children for illiterate women is higher than literate women. Women married early have larger family size.
+
+According to the boxplot for literacy vs family size, people without literacy have a larger family size compared with people with literacy and also have a larger variation. According to the Boxplot for the age at marriage vs Family size, people married at an early age typically have a larger family size compared with people who married after. 
+
+
+```{r, include=FALSE}
+portugal$logYearsMarried = log(pmax(1, portugal$monthsSinceM) / 12)
+portugal$ageMarried = relevel (portugal$ageMarried, "22to25")
+```
+
+
+```{r, include=FALSE}
+portugalPoisson = glm(children ~ offset(logYearsMarried) + literacy + ageMarried + age + region, data = portugal, family = poisson)
+summary(portugalPoisson)
+```
+
+The final model, referred to as **portugalPoisson**, is specified as a Poisson regression to model the expected number of children based on literacy status, age at marriage, current age, and region, with an offset for the number of years married. The formal specification of the model is as follows:
+
+\[
+\log\left(\mathbb{E}[\text{children}_i]\right) = \log(\text{YearsMarried}_i) + \beta_0 + \beta_1 \cdot \text{Literacy}_i + \beta_2 \cdot \text{AgeMarried}_i + \beta_3 \cdot \text{Age}_i + \beta_4 \cdot \text{Region}_i
+\]
+
+The model assumes that the number of children follows a Poisson distribution:
+
+\[
+\text{children}_i \sim \text{Poisson}(\lambda_i)
+\]
+
+where the rate parameter \(\lambda_i\) is linked to the predictors through the log-link function:
+
+\[
+\lambda_i = \exp\left(\log(\text{YearsMarried}_i) + \beta_0 + \beta_1 \cdot \text{Literacy}_i + \beta_2 \cdot \text{AgeMarried}_i + \beta_3 \cdot \text{Age}_i + \beta_4 \cdot \text{Region}_i \right)
+\]
+
+
+Table 1: Poisson Regression Results for Predictors of birth rate
+```{r, echo = FALSE}
+library(knitr)
+var_labels <- c(
+  "(Intercept)" = "Intercept",
+  "literacyno" = "Not Literate",
+  "ageMarried0to15" = "Marriage Age 0 to 15",
+  "ageMarried15to18" = "Marriage Age 15 to 18",
+  "ageMarried18to20" = "Marriage Age 18 to 20",
+  "ageMarried20to22" = "Marriage Age 20 to 22",
+  "ageMarried25to30" = "Marriage Age 25 to 30",
+  "ageMarried30toInf" = "Marriage Age 30+",
+  "age" = "Age",
+  "regionlisbon" = "Region: Lisbon",
+  "regionporto" = "Region: Porto",
+  "region20k+" = "Region: Population 20k+",
+  "region10-20k" = "Region: Population 10k-20k"
+)
+
+coef_summary <- summary(portugalPoisson)$coefficients
+exp_coef <- exp(coef(portugalPoisson)) 
+conf_int <- exp(confint(portugalPoisson)) 
+
+
+result <- cbind(
+  Estimate = coef_summary[, "Estimate"],
+  `Std. Error` = coef_summary[, "Std. Error"],
+  `z value` = coef_summary[, "z value"],
+  `Pr(>|z|)` = coef_summary[, "Pr(>|z|)"],
+  `Exp(Estimate)` = exp_coef,
+  `2.5 %` = conf_int[, 1],   
+  `97.5 %` = conf_int[, 2]   
+)
+
+
+rownames(result) <- var_labels[rownames(result)]
+
+
+knitr::kable(result, digits = 3)
+
+```
+Table 1: Poisson regression results showing the relationship between literacy, age at marriage, region, and birth rate. Literacy and age married are all affecting birth rate.
+
+This table presents the results of the Poisson Regression model assessing the impact of literacy, marriage age, age, and regional factors on family size. In the Poisson model, we use offset for the log(years married) and include four key predictors which are literacy, age married, age and region. For the age married, we use the age between 22 to 25 as the reference level. The baseline group (age married between 22-25) has on average 4 children every five years. For the region, we use rural areas with less than 10,000 people as reference level. By looking at the table above, since the confidence interval for those without literacy does not include 1, there is a difference in birth rate between no literacy compared to with literacy (literacy has a significant effect on family size). For people with the same age married group, region as well as the age, Illiterate individuals have 42.4% more birth rate compared to literate individuals. The confidence interval for ages married between 18-20 and 20-22 age groups includes 1. Hence, there is no difference in the birth rate between ages married 18-20 and 20-22 compared to ages married 22-25. In contrast, the confidence interval for ages married between 0-15, 15-18, 25-30, 30+ does not include 1. It concludes that there exists a difference in the birth rate for these age groups compared to the ages married 22-25. For people with the same literacy level, age, and region, people married at age 0-15 have 14.4% fewer birth rate compared to the reference level (those married at 22-25). Those married between 15-18 have 7% fewer birth rate compared to the reference level. Those married between 25-30 have 10.8% more birth rate compared to the reference level. Those married after 30 have a 20.1% higher birth rate compared to the reference level. One year of increase in age decreases the birth rate by 4%. In general, urban areas and areas with larger populations have lower birth rates compared with rural areas with smaller populations.
+
+
+
+```{r, include=FALSE}
+m <- aggregate(portugal$children, by=list(portugal$literacy, portugal$ageMarried), mean)
+
+v <- aggregate(portugal$children, by=list(portugal$literacy, portugal$ageMarried), var)
+
+tab <- cbind(m, v[,3])
+```
+
+
+```{r, include=FALSE}
+knitr::kable(tab, digits=3, col.names=c("literacy", "ageMarried", "Mean", "Variance"))
+```
+
+
+```{r, include=FALSE}
+portugalPoissonCI = as.data.frame(exp(confint(portugalPoisson)[-1,]))
+portugalPoissonCI$level = gsub(paste(names(portugalPoisson$xlevels), collapse='|'),
+"", rownames(portugalPoissonCI))
+
+portugalPoissonCI$variable <- unlist(mapply(function(name, level) {
+  sub(level, "", name)
+}, rownames(portugalPoissonCI), portugalPoissonCI$level))
+
+portugalPoissonCI$x = 1:nrow(portugalPoissonCI)
+portugalPoissonCI$cex = sqrt(1/apply(log(portugalPoissonCI[,1:2]),1,diff))
+forXaxis = tapply(portugalPoissonCI$x, portugalPoissonCI$variable, mean)
+portugalPoissonCI[1:6,]
+
+```
+```{r, include=FALSE}
+matplot(portugalPoissonCI[,1:2], type='n', xaxt='n', bty='n', xaxt='n', log='y', ylab='RR')
+
+portugalPoissonCI$cex = pmin(portugalPoissonCI$cex, 3)
+segments(portugalPoissonCI$x, portugalPoissonCI[,1], portugalPoissonCI$x, portugalPoissonCI[,2])
+points(portugalPoissonCI$x, exp(portugalPoisson$coef[-1]), pch=15, cex = portugalPoissonCI$cex, col = '#00000030')
+mtext(portugalPoissonCI$level, 1, at=portugalPoissonCI$x, las=3, line=1)
+mtext(gsub('region\\+', '', names(forXaxis)), 1, at=forXaxis, line=0) 
+abline(h=1, lty=3)
+```
+
+
+
+```{r, include=FALSE}
+library('glmmTMB')
+portugalNB = glmmTMB(children ~ offset(logYearsMarried) + literacy + ageMarried + age + region, data = portugal, family=nbinom2)
+```
+
+```{r, include=FALSE}
+summary(portugalNB)
+```
+```{r, include=FALSE}
+confint(portugalNB, parm = "sigma")
+```
+The negative binomial regression model, referred to as **portugalNB**, is specified as:
+
+\[
+\log\left(\mathbb{E}[\text{children}_i]\right) = \log(\text{YearsMarried}_i) + \beta_0 + \beta_1 \cdot \text{Literacy}_i + \beta_2 \cdot \text{AgeMarried}_i + \beta_3 \cdot \text{Age}_i + \beta_4 \cdot \text{Region}_i
+\]
+
+where the number of children follows a Negative Binomial distribution:
+
+\[
+\text{children}_i \sim \text{NB}(\mu_i, \tau)
+\]
+
+The mean \(\mu_i\) is linked to the predictors through the log-link function:
+
+\[
+\mu_i = \exp\left(\log(\text{YearsMarried}_i) + \beta_0 + \beta_1 \cdot \text{Literacy}_i + \beta_2 \cdot \text{AgeMarried}_i + \beta_3 \cdot \text{Age}_i + \beta_4 \cdot \text{Region}_i \right)
+\]
+
+
+
+
+```{r, echo = FALSE}
+library(kableExtra)
+var_labels <- c(
+  "(Intercept)" = "Intercept",
+  "literacyno" = "Not Literate",
+  "ageMarried0to15" = "Marriage Age 0 to 15",
+  "ageMarried15to18" = "Marriage Age 15 to 18",
+  "ageMarried18to20" = "Marriage Age 18 to 20",
+  "ageMarried20to22" = "Marriage Age 20 to 22",
+  "ageMarried25to30" = "Marriage Age 25 to 30",
+  "sd" = "Standard Deviation"
+)
+
+conf_intervals <- confint(portugalNB)[1:7, c(3, 1, 2)]
+sd_value <- 1 / sqrt(confint(portugalNB, parm = 'sigma')[c(3, 2, 1)])
+
+result <- rbind(conf_intervals, sd = sd_value)
+
+rownames(result) <- var_labels[rownames(result)]
+
+
+kable(result, digits = 3, 
+      caption = "Confidence Intervals and Dispersion Parameter for Negative Binomial Regression Model") %>%
+  kable_styling(full_width = FALSE, position = "center") 
+  
+```
+Table 2: Confidence intervals for key predictors and the dispersion parameter from the Negative Binomial regression model. Literacy and age married are all affecting birth rate. The birth rate varies about 15% 
+
+
+In the Negative Binomial model, we use offset for the years married and include the same predictors as the Poisson GLM. For the age married, we use the same reference level as the Poisson GLM for both age married and religion. By looking at the table above, the confidence interval for ages married between 0-15, 18-20 and 20-22 age groups includes 0. Hence, there is no difference in the birth rate between ages married 0-15, 18-20, and 20-22 compared to the ages married 22-25. In contrast, the confidence interval for ages married between 0-15, 15-18, 25-30, and 30+ does not include 0. It concludes that there exists a difference in the birth rate for these age groups compared to the ages married 22-25. Since the confidence interval for those without literacy does not include 1, there is a difference in the birth rate between no literacy compared to with literacy. The baseline group (age married between 22-25) has on average 4 children every five years and the birth rates vary by about 15%. 
+
+
+```{r, include = FALSE}
+coef_summary <- summary(portugalNB)$coefficients$cond
+exp_coef <- exp(fixef(portugalNB)$cond)
+conf_int_full <- confint(portugalNB)
+
+conf_int_cond <- conf_int_full[rownames(conf_int_full) %in% rownames(coef_summary), ]
+
+conf_int_exp <- exp(conf_int_cond)
+
+result <- cbind(
+  Estimate = coef_summary[, "Estimate"],
+  `Std. Error` = coef_summary[, "Std. Error"],
+  `z value` = coef_summary[, "z value"],
+  `Pr(>|z|)` = coef_summary[, "Pr(>|z|)"],
+  `Exp(Estimate)` = exp_coef,
+  `2.5 %` = conf_int_exp[, 1],   
+  `97.5 %` = conf_int_exp[, 2]   
+)
+
+knitr::kable(result, digits = 3)
+```
+
+
+```{r, include = FALSE}
+library(jtools)
+```
+
+```{r, include = FALSE}
+var_labels <- c(
+  "(Intercept)" = "Intercept",
+  "literacyno" = "Not Literate",
+  "ageMarried0to15" = "Marriage Age 0 to 15",
+  "ageMarried15to18" = "Marriage Age 15 to 18",
+  "ageMarried18to20" = "Marriage Age 18 to 20",
+  "ageMarried20to22" = "Marriage Age 20 to 22",
+  "ageMarried25to30" = "Marriage Age 25 to 30",
+  "ageMarried30toInf" = "Marriage Age 30+",
+  "age" = "Age",
+  "regionlisbon" = "Region: Lisbon",
+  "regionporto" = "Region: Porto",
+  "region20k+" = "Region: Population 20k+",
+  "region10-20k" = "Region: Population 10k-20k"
+)
+
+# plot_summs(portugalPoisson, portugalNB, omit.coefs = F, model.names = c("Poisson", "Negative Binomial"), coefs = var_labels)
+
+```
+
+
+```{r, echo = FALSE}
+plot_summs(portugalPoisson, portugalNB, omit.coefs = F, model.names = c("poission", "negative binomial"))
+```
+
+
+Figure 3: 95% Confidence Intervals for predictors of Poission and Negative Binomial GLM and comparison of log-rate ratios. Age married between 0-15 for the Negative Binomial GLM become no longer significant compared to the Poisson GLM.
+
+In the above graph, Both the Poisson and Negative Binomial GLM provide similar estimates for all the variables, but the Negative Binomial model may have slightly wider confidence intervals due to accounting for minor overdispersion. Also, for both Poisson and Negative Binomial GLM, they both provide similar significance levels among all the predictors.
+
+# Conclusion
+
+We have found that literacy and age married significantly influence family size. From the Poisson regression model, illiterate individuals have on average 42.4% higher birth rate  compared to literate individuals, holding other factors constant. This suggests that literacy inversely affects family size, which is consistent with prior studies from Gulf Arab countries (Hamadeh et al., 2008) and West Bengal, India (Chatterjee, 2019), which also found that higher education levels correlate with smaller family sizes.
+
+Overall, our models indicate that while early marriages (ages 0-15 and 15-18) are associated with lower birth rates compared to the reference group (ages 22-25), later marriages (ages 25-30 and 30+) are linked to higher birth rates. Additionally, each one-year increase in age reduces the birth rate by 4%, and urban areas tend to have lower birth rates compared to rural regions. These results are consistent with existing literature, except for the finding that marriages after age 30 in Portugal lead to higher birth rates, contrasting with U.S. data (Nitsche & Hayford, 2020). These insights can help social economists and policymakers in understanding the effect of education and age of marriage on birth rate, which will be beneficial for resource allocation and economic development plans.
+
+\newpage
+# References
+
+1. Maralani, V. (2008). The changing relationship between family size and educational attainment over the course of socioeconomic development: Evidence from Indonesia. Demography, 45(3), 693–717. https://doi.org/10.1353/dem.0.0013 
+
+2. Hamadeh, R. R., Al-Roomi, K., & Masuadi, E. (2008). Determinants of family size in a Gulf Arab state: a comparison between two areas. Perspectives in Public Health, 128(5), 226–232. https://doi.org/10.1177/1466424008092795
+
+3. Chatterjee, S. (2020). Rural–urban differentials in fertility levels and fertility preferences in West Bengal, India: a district-level analysis. Journal of Biosocial Science, 52(1), 117–131. doi:10.1017/S0021932019000324
+
+4. Nitsche, N., & Hayford, S. R. (2020). Preferences, Partners, and Parenthood: Linking Early Fertility Desires, Marriage Timing, and Achieved Fertility. Demography, 57(6), 1975–2001. https://doi.org/10.1007/s13524-020-00927-y
+
+5. The DHS Program. (1991). Portugal survey data. In Dynamic Database: A Catalogue of Survey Data Files (Voorburg: International Statistical Institute). Retrieved from https://wfs.dhsprogram.com/index.cfm?ccode=pt
+
+
+
+
+
+
+
