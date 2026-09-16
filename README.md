@@ -15,11 +15,5 @@ In the reported Poisson model, women without literacy had a **42.4% higher model
 
 Poisson and negative binomial models produced similar coefficient estimates, with the negative binomial model allowing for additional variation. These are adjusted associations in historical survey data, not causal effects.
 
-## Code and Report
-
-- [Full report](Family_size_project.pdf): analysis, visualizations, and model results.
-- [R Markdown source](family_size_analysis.Rmd): data import, exploratory plots, regression models, and tables.
-
 **Tools:** R, ggplot2, dplyr, glmmTMB, jtools, gridExtra, knitr, and kableExtra.
 
-The R Markdown source downloads the survey data from an external URL. Rendering the PDF requires the R packages above, rmarkdown, and a LaTeX installation. The original source is provided as supplied; it has not been rerun for this upload.
